@@ -1,0 +1,1802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbital Notebook</title>
+<style>
+  /* ── Design tokens ─────────────────────────────────────────── */
+  :root {
+    --void:      #080b12;
+    --deep:      #0d1220;
+    --panel:     #111827;
+    --surface:   #1a2235;
+    --rim:       #1f2d45;
+    --muted:     #2a3a55;
+    --ghost:     #3d5070;
+    --dim:       #5a7399;
+    --soft:      #8ba3c4;
+    --text:      #c8d8ee;
+    --bright:    #e8f0fc;
+    --accent:    #4fa3e8;
+    --pulse:     #6bb8ff;
+    --warm:      #f0a050;
+    --danger:    #e05555;
+    --success:   #50c878;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+    --font-ui:   'Inter', system-ui, sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-ui);
+    background: var(--void);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Top bar ──────────────────────────────────────────────── */
+  #topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    height: 44px;
+    background: var(--deep);
+    border-bottom: 1px solid var(--rim);
+    flex-shrink: 0;
+    z-index: 100;
+  }
+  #topbar .logo {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--pulse);
+    letter-spacing: 0.08em;
+    user-select: none;
+  }
+  #topbar .logo span { color: var(--warm); }
+  .topbar-sep { flex: 1; }
+  .tb-btn {
+    background: var(--surface);
+    border: 1px solid var(--muted);
+    color: var(--soft);
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--font-ui);
+    transition: background 0.15s, color 0.15s;
+  }
+  .tb-btn:hover { background: var(--muted); color: var(--bright); }
+  .tb-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ── Layout ───────────────────────────────────────────────── */
+  #workspace {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── Notebook panel ───────────────────────────────────────── */
+  #notebook-panel {
+    width: 380px;
+    min-width: 280px;
+    max-width: 600px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--rim);
+    background: var(--panel);
+    position: relative;
+    flex-shrink: 0;
+  }
+  #notebook-panel.collapsed { width: 0; min-width: 0; border-right: none; overflow: hidden; }
+
+  #notebook-header {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--rim);
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  #notebook-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    flex: 1;
+  }
+
+  #cells-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 10px 60px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted) transparent;
+  }
+  #cells-container::-webkit-scrollbar { width: 4px; }
+  #cells-container::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 2px; }
+
+  /* ── Cell ────────────────────────────────────────────────── */
+  .cell {
+    background: var(--surface);
+    border: 1px solid var(--rim);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    transition: border-color 0.15s;
+    position: relative;
+  }
+  .cell:hover { border-color: var(--ghost); }
+  .cell.focused { border-color: var(--accent); }
+  .cell.dragging { opacity: 0.5; }
+  .cell.drag-over { border-color: var(--pulse); box-shadow: 0 0 0 2px rgba(107,184,255,0.2); }
+
+  .cell-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--rim);
+    cursor: grab;
+  }
+  .cell-header:active { cursor: grabbing; }
+
+  .cell-type-badge {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    user-select: none;
+  }
+  .badge-text   { background: rgba(79,163,232,0.15); color: var(--accent); border: 1px solid rgba(79,163,232,0.3); }
+  .badge-md     { background: rgba(80,200,120,0.15); color: var(--success); border: 1px solid rgba(80,200,120,0.3); }
+  .badge-orbit  { background: rgba(240,160,80,0.15); color: var(--warm); border: 1px solid rgba(240,160,80,0.3); }
+
+  .cell-label {
+    font-size: 11px;
+    color: var(--dim);
+    flex: 1;
+    font-family: var(--font-mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cell-actions { display: flex; gap: 3px; }
+  .cell-btn {
+    background: transparent;
+    border: none;
+    color: var(--ghost);
+    cursor: pointer;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+    line-height: 1;
+    transition: color 0.1s, background 0.1s;
+  }
+  .cell-btn:hover { color: var(--bright); background: var(--muted); }
+  .cell-btn.danger:hover { color: var(--danger); }
+
+  .cell-body { padding: 8px; }
+
+  .cell-editor {
+    width: 100%;
+    background: var(--deep);
+    border: 1px solid var(--muted);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 8px;
+    resize: vertical;
+    min-height: 60px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .cell-editor:focus { border-color: var(--accent); }
+
+  .cell-rendered {
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text);
+    cursor: pointer;
+    min-height: 28px;
+  }
+  .cell-rendered h1,.cell-rendered h2,.cell-rendered h3 { color: var(--bright); margin-bottom: 6px; }
+  .cell-rendered h1 { font-size: 18px; }
+  .cell-rendered h2 { font-size: 15px; }
+  .cell-rendered h3 { font-size: 13px; }
+  .cell-rendered p { margin-bottom: 6px; }
+  .cell-rendered code { font-family: var(--font-mono); background: var(--deep); padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+  .cell-rendered pre { background: var(--deep); padding: 8px; border-radius: 4px; overflow-x: auto; }
+  .cell-rendered ul,.cell-rendered ol { padding-left: 20px; }
+  .cell-rendered strong { color: var(--bright); }
+  .cell-rendered em { color: var(--soft); }
+
+  .cell-placeholder {
+    color: var(--ghost);
+    font-size: 12px;
+    font-style: italic;
+    padding: 4px;
+  }
+
+  /* orbit embed in cell */
+  .cell-orbit-embed {
+    width: 100%;
+    height: 220px;
+    background: var(--void);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+    cursor: pointer;
+  }
+  .cell-orbit-embed canvas { width: 100%; height: 100%; }
+  .orbit-embed-overlay {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(8,11,18,0.6);
+    color: var(--soft);
+    font-size: 12px;
+    gap: 6px;
+    transition: background 0.2s;
+  }
+  .orbit-embed-overlay:hover { background: rgba(8,11,18,0.3); }
+  .orbit-embed-overlay .open-icon { font-size: 20px; color: var(--warm); }
+
+  /* ── Add cell bar ─────────────────────────────────────────── */
+  #add-cell-bar {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 8px 10px;
+    background: linear-gradient(to top, var(--panel) 60%, transparent);
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .add-btn {
+    flex: 1;
+    background: var(--surface);
+    border: 1px dashed var(--muted);
+    color: var(--dim);
+    font-size: 11px;
+    padding: 5px 0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--font-ui);
+    transition: all 0.15s;
+  }
+  .add-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(79,163,232,0.06); }
+
+  /* ── Resize handle ────────────────────────────────────────── */
+  #resize-handle {
+    width: 4px;
+    background: var(--rim);
+    cursor: col-resize;
+    flex-shrink: 0;
+    transition: background 0.15s;
+  }
+  #resize-handle:hover { background: var(--accent); }
+
+  /* ── Simulator panel ──────────────────────────────────────── */
+  #sim-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    background: var(--void);
+    overflow: hidden;
+  }
+
+  /* ── Sim toolbar ──────────────────────────────────────────── */
+  #sim-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--deep);
+    border-bottom: 1px solid var(--rim);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  .sim-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 6px;
+    border-right: 1px solid var(--rim);
+  }
+  .sim-group:last-child { border-right: none; padding-right: 0; }
+
+  .sim-btn {
+    background: var(--surface);
+    border: 1px solid var(--muted);
+    color: var(--soft);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    transition: all 0.12s;
+    min-width: 28px;
+    text-align: center;
+  }
+  .sim-btn:hover { background: var(--muted); color: var(--bright); }
+  .sim-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .sim-btn.play-active { background: #1a3a1a; color: var(--success); border-color: var(--success); }
+
+  .sim-label {
+    font-size: 10px;
+    color: var(--dim);
+    font-family: var(--font-mono);
+    letter-spacing: 0.06em;
+    white-space: nowrap;
+  }
+
+  #timewarp-slider {
+    width: 90px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+  #timewarp-display {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--warm);
+    min-width: 52px;
+  }
+
+  /* preset select */
+  .sim-select {
+    background: var(--surface);
+    border: 1px solid var(--muted);
+    color: var(--text);
+    font-size: 11px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--font-ui);
+  }
+  .sim-select:focus { outline: none; border-color: var(--accent); }
+
+  /* ── Main canvas area ─────────────────────────────────────── */
+  #canvas-wrapper {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  #sim-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+  }
+  #sim-canvas.panning { cursor: grab; }
+  #sim-canvas.panning:active { cursor: grabbing; }
+
+  /* ── Status bar ───────────────────────────────────────────── */
+  #status-bar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 4px 12px;
+    background: var(--deep);
+    border-top: 1px solid var(--rim);
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--dim);
+  }
+  .stat { display: flex; gap: 4px; }
+  .stat-label { color: var(--ghost); }
+  .stat-val { color: var(--soft); }
+  .stat-val.ok { color: var(--success); }
+  .stat-val.warn { color: var(--warm); }
+  #mode-indicator {
+    margin-left: auto;
+    color: var(--accent);
+    font-size: 10px;
+  }
+
+  /* ── Body placement popover ───────────────────────────────── */
+  #place-popover {
+    position: absolute;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 12px;
+    width: 220px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(79,163,232,0.1);
+    z-index: 50;
+    display: none;
+  }
+  #place-popover.visible { display: block; }
+  .pop-title {
+    font-size: 11px;
+    color: var(--soft);
+    font-family: var(--font-mono);
+    margin-bottom: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .pop-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 7px;
+  }
+  .pop-row label {
+    font-size: 11px;
+    color: var(--dim);
+    width: 68px;
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+  }
+  .pop-input {
+    flex: 1;
+    background: var(--deep);
+    border: 1px solid var(--muted);
+    color: var(--text);
+    font-size: 11px;
+    padding: 4px 6px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    outline: none;
+    width: 100%;
+  }
+  .pop-input:focus { border-color: var(--accent); }
+  .pop-unit {
+    font-size: 10px;
+    color: var(--ghost);
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+  }
+  .pop-actions { display: flex; gap: 6px; margin-top: 10px; }
+  .pop-btn {
+    flex: 1;
+    padding: 5px 0;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: var(--font-ui);
+    border: 1px solid;
+    transition: all 0.12s;
+  }
+  .pop-btn-place { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .pop-btn-place:hover { background: var(--pulse); }
+  .pop-btn-cancel { background: transparent; color: var(--dim); border-color: var(--muted); }
+  .pop-btn-cancel:hover { background: var(--muted); color: var(--text); }
+
+  /* velocity direction widget */
+  #vel-canvas {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    background: var(--deep);
+    border: 1px solid var(--muted);
+    cursor: crosshair;
+    display: block;
+    margin: 0 auto 8px;
+  }
+
+  /* ── Body info tooltip ────────────────────────────────────── */
+  #body-tooltip {
+    position: absolute;
+    background: rgba(13,18,32,0.92);
+    border: 1px solid var(--rim);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--soft);
+    pointer-events: none;
+    z-index: 40;
+    display: none;
+    line-height: 1.8;
+  }
+  #body-tooltip.visible { display: block; }
+  #body-tooltip .tt-name { color: var(--bright); font-size: 11px; margin-bottom: 3px; }
+
+  /* ── Resonance indicator ──────────────────────────────────── */
+  #resonance-log {
+    position: absolute;
+    top: 8px; right: 8px;
+    background: rgba(13,18,32,0.85);
+    border: 1px solid var(--rim);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--dim);
+    max-width: 200px;
+    z-index: 30;
+  }
+  .res-entry { color: var(--warm); margin-bottom: 2px; }
+
+  /* ── Scrollbar for notebook ───────────────────────────────── */
+  * { scrollbar-width: thin; scrollbar-color: var(--muted) transparent; }
+
+  /* ── Toasts ───────────────────────────────────────────────── */
+  #toast-container {
+    position: fixed;
+    bottom: 40px; right: 16px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    pointer-events: none;
+  }
+  .toast {
+    background: var(--surface);
+    border: 1px solid var(--muted);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 12px;
+    color: var(--text);
+    animation: toastIn 0.2s ease, toastOut 0.3s ease 2s forwards;
+  }
+  @keyframes toastIn { from { opacity:0; transform: translateY(10px); } to { opacity:1; transform: none; } }
+  @keyframes toastOut { to { opacity:0; transform: translateY(10px); } }
+
+  /* ── Stars bg canvas ──────────────────────────────────────── */
+  #stars-canvas {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+  }
+  #sim-canvas { position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div id="topbar">
+  <div class="logo">orbital<span>·</span>notebook</div>
+  <div class="topbar-sep"></div>
+  <button class="tb-btn" id="btn-toggle-notebook" title="Toggle notebook panel">◧ Notebook</button>
+  <button class="tb-btn" id="btn-export">↑ Export</button>
+  <button class="tb-btn" id="btn-import">↓ Import</button>
+</div>
+
+<!-- Workspace -->
+<div id="workspace">
+
+  <!-- Notebook panel -->
+  <div id="notebook-panel">
+    <div id="notebook-header">
+      <span id="notebook-title">// notebook</span>
+      <button class="cell-btn" id="btn-nb-collapse" title="Collapse">✕</button>
+    </div>
+    <div id="cells-container"></div>
+    <div id="add-cell-bar">
+      <button class="add-btn" data-type="text">+ Text</button>
+      <button class="add-btn" data-type="md">+ Markdown</button>
+      <button class="add-btn" data-type="orbit">+ Orbit</button>
+    </div>
+  </div>
+
+  <!-- Resize handle -->
+  <div id="resize-handle"></div>
+
+  <!-- Simulator panel -->
+  <div id="sim-panel">
+
+    <!-- Toolbar -->
+    <div id="sim-toolbar">
+      <div class="sim-group">
+        <button class="sim-btn" id="btn-play" title="Play/Pause (Space)">▶</button>
+        <button class="sim-btn" id="btn-step" title="Step one tick">⏭</button>
+        <button class="sim-btn" id="btn-reset" title="Reset simulation">↺</button>
+      </div>
+      <div class="sim-group">
+        <span class="sim-label">warp</span>
+        <input type="range" id="timewarp-slider" min="-1" max="4" step="0.01" value="0">
+        <span id="timewarp-display">1×</span>
+      </div>
+      <div class="sim-group">
+        <button class="sim-btn" id="btn-place-mode" title="Place body (P)">⊕ Place</button>
+        <button class="sim-btn" id="btn-pan-mode" title="Pan mode (V)">✥ Pan</button>
+      </div>
+      <div class="sim-group">
+        <button class="sim-btn" id="btn-trails" title="Toggle trails (T)">〜 Trails</button>
+        <button class="sim-btn" id="btn-com" title="Center of mass">⊞ CoM</button>
+        <button class="sim-btn" id="btn-fit" title="Fit all bodies (F)">⤢ Fit</button>
+      </div>
+      <div class="sim-group">
+        <select class="sim-select" id="preset-select">
+          <option value="">Presets…</option>
+          <option value="solar">Solar System</option>
+          <option value="earthmoon">Earth–Moon</option>
+          <option value="binary">Binary Stars</option>
+          <option value="figure8">Figure-8</option>
+          <option value="blank">Blank</option>
+        </select>
+      </div>
+      <div class="sim-group">
+        <span class="sim-label">unit</span>
+        <button class="sim-btn" id="btn-unit-toggle">kg</button>
+      </div>
+    </div>
+
+    <!-- Canvas area -->
+    <div id="canvas-wrapper">
+      <canvas id="stars-canvas"></canvas>
+      <canvas id="sim-canvas"></canvas>
+
+      <!-- Place popover -->
+      <div id="place-popover">
+        <div class="pop-title">Place body</div>
+        <canvas id="vel-canvas" width="80" height="80" title="Drag to set velocity direction & magnitude"></canvas>
+        <div class="pop-row">
+          <label>Name</label>
+          <input class="pop-input" id="pop-name" type="text" placeholder="Body A" maxlength="20">
+        </div>
+        <div class="pop-row">
+          <label>Mass</label>
+          <input class="pop-input" id="pop-mass" type="number" value="1e24" min="1e10" step="any">
+          <span class="pop-unit" id="pop-mass-unit">kg</span>
+        </div>
+        <div class="pop-row">
+          <label>|v|</label>
+          <input class="pop-input" id="pop-speed" type="number" value="0" min="0" step="any">
+          <span class="pop-unit">m/s</span>
+        </div>
+        <div class="pop-actions">
+          <button class="pop-btn pop-btn-place" id="pop-place-btn">Place</button>
+          <button class="pop-btn pop-btn-cancel" id="pop-cancel-btn">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Body tooltip -->
+      <div id="body-tooltip">
+        <div class="tt-name" id="tt-name"></div>
+        <div id="tt-mass"></div>
+        <div id="tt-vel"></div>
+        <div id="tt-period"></div>
+      </div>
+
+      <!-- Resonance log -->
+      <div id="resonance-log">
+        <div style="color:var(--ghost);font-size:9px;margin-bottom:4px;letter-spacing:0.1em;">RESONANCES</div>
+        <div id="res-entries">—</div>
+      </div>
+    </div>
+
+    <!-- Status bar -->
+    <div id="status-bar">
+      <div class="stat"><span class="stat-label">t</span><span class="stat-val" id="stat-time">0.00 yr</span></div>
+      <div class="stat"><span class="stat-label">E</span><span class="stat-val ok" id="stat-energy">—</span></div>
+      <div class="stat"><span class="stat-label">ΔE</span><span class="stat-val ok" id="stat-denergy">—</span></div>
+      <div class="stat"><span class="stat-label">bodies</span><span class="stat-val" id="stat-bodies">0</span></div>
+      <div class="stat"><span class="stat-label">zoom</span><span class="stat-val" id="stat-zoom">1.0×</span></div>
+      <div id="mode-indicator">PLACE MODE</div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// CONSTANTS & GLOBALS
+// ═══════════════════════════════════════════════════════════════════════════
+const G = 6.674e-11;
+const AU = 1.496e11;
+const YEAR = 3.156e7;
+const SOLAR_MASS = 1.989e30;
+const EARTH_MASS = 5.972e24;
+
+let bodies = [];
+let trails = [];
+const MAX_TRAIL = 600;
+let isPlaying = false;
+let showTrails = true;
+let showCoM = false;
+let useAU = false;
+let followBody = null;
+let timeWarp = 1;
+let simTime = 0;
+let initialEnergy = null;
+let stepCount = 0;
+let camX = 0, camY = 0, camZoom = 1;
+let mode = 'place'; // 'place' | 'pan'
+let placePending = null;
+let velDrag = false;
+let velAngle = -Math.PI/2;
+let velMag = 0;
+let panning = false, panStartX = 0, panStartY = 0;
+let hoveredBody = null;
+let resonanceData = [];
+
+const COLORS = [
+  '#4fa3e8','#f0a050','#50c878','#e055aa','#a07cf0',
+  '#50d8d8','#f07050','#c8e840','#ff8060','#60c8ff',
+];
+let colorIdx = 0;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NOTEBOOK
+// ═══════════════════════════════════════════════════════════════════════════
+let cells = [];
+let cellCounter = 0;
+
+function createCell(type, content='') {
+  return {
+    id: ++cellCounter,
+    type, // 'text' | 'md' | 'orbit'
+    content,
+    editing: type !== 'orbit',
+    simState: type === 'orbit' ? null : undefined,
+    label: type === 'orbit' ? 'Orbit canvas' : (type === 'md' ? 'Markdown' : 'Text'),
+  };
+}
+
+function renderNotebook() {
+  const container = document.getElementById('cells-container');
+  container.innerHTML = '';
+  cells.forEach((cell, idx) => {
+    const el = buildCellEl(cell, idx);
+    container.appendChild(el);
+  });
+}
+
+function buildCellEl(cell, idx) {
+  const div = document.createElement('div');
+  div.className = 'cell';
+  div.draggable = true;
+  div.dataset.id = cell.id;
+
+  // header
+  const hdr = document.createElement('div');
+  hdr.className = 'cell-header';
+
+  const badge = document.createElement('span');
+  badge.className = `cell-type-badge badge-${cell.type}`;
+  badge.textContent = cell.type === 'orbit' ? 'orbit' : cell.type === 'md' ? 'md' : 'text';
+
+  const label = document.createElement('span');
+  label.className = 'cell-label';
+  label.textContent = cell.label;
+
+  const actions = document.createElement('div');
+  actions.className = 'cell-actions';
+
+  const mkBtn = (icon, title, cls, fn) => {
+    const b = document.createElement('button');
+    b.className = 'cell-btn' + (cls ? ' ' + cls : '');
+    b.innerHTML = icon; b.title = title;
+    b.addEventListener('click', e => { e.stopPropagation(); fn(); });
+    return b;
+  };
+
+  if (cell.type !== 'orbit') {
+    actions.appendChild(mkBtn(cell.editing ? '👁' : '✎', cell.editing ? 'Preview' : 'Edit', '', () => {
+      cell.editing = !cell.editing; renderNotebook();
+    }));
+  }
+  if (idx > 0) actions.appendChild(mkBtn('↑', 'Move up', '', () => { [cells[idx-1],cells[idx]]=[cells[idx],cells[idx-1]]; renderNotebook(); }));
+  if (idx < cells.length-1) actions.appendChild(mkBtn('↓', 'Move down', '', () => { [cells[idx],cells[idx+1]]=[cells[idx+1],cells[idx]]; renderNotebook(); }));
+  actions.appendChild(mkBtn('⧉', 'Duplicate', '', () => {
+    const copy = {...createCell(cell.type, cell.content), label: cell.label+' (copy)'};
+    cells.splice(idx+1, 0, copy); renderNotebook();
+  }));
+  actions.appendChild(mkBtn('✕', 'Delete', 'danger', () => { cells.splice(idx,1); renderNotebook(); }));
+
+  hdr.appendChild(badge); hdr.appendChild(label); hdr.appendChild(actions);
+  div.appendChild(hdr);
+
+  // body
+  const body = document.createElement('div');
+  body.className = 'cell-body';
+
+  if (cell.type === 'orbit') {
+    const embed = document.createElement('div');
+    embed.className = 'cell-orbit-embed';
+    const ec = document.createElement('canvas');
+    embed.appendChild(ec);
+    const ov = document.createElement('div');
+    ov.className = 'orbit-embed-overlay';
+    ov.innerHTML = '<span class="open-icon">⊙</span><span>Open in simulator</span>';
+    ov.addEventListener('click', () => {
+      toast('Orbit cell linked to main simulator');
+    });
+    embed.appendChild(ov);
+    body.appendChild(embed);
+    // draw mini preview
+    requestAnimationFrame(() => drawMiniOrbit(ec, cell));
+  } else if (cell.editing) {
+    const ta = document.createElement('textarea');
+    ta.className = 'cell-editor';
+    ta.value = cell.content;
+    ta.placeholder = cell.type === 'md' ? '# Heading\n**bold** *italic* `code`' : 'Write a note…';
+    ta.addEventListener('input', () => {
+      cell.content = ta.value;
+      // update label from first line
+      const fl = ta.value.split('\n')[0].replace(/^#+\s*/, '').trim();
+      if (fl) { cell.label = fl.slice(0,40); label.textContent = cell.label; }
+    });
+    ta.addEventListener('keydown', e => {
+      if (e.key === 'Tab') { e.preventDefault(); const s=ta.selectionStart; ta.value=ta.value.slice(0,s)+'  '+ta.value.slice(ta.selectionEnd); ta.selectionStart=ta.selectionEnd=s+2; }
+    });
+    body.appendChild(ta);
+    setTimeout(() => ta.focus(), 30);
+  } else {
+    const rd = document.createElement('div');
+    rd.className = 'cell-rendered';
+    if (cell.content.trim()) {
+      rd.innerHTML = cell.type === 'md' ? parseMarkdown(cell.content) : escapeHtml(cell.content).replace(/\n/g,'<br>');
+    } else {
+      rd.innerHTML = `<span class="cell-placeholder">Click ✎ to edit</span>`;
+    }
+    rd.addEventListener('dblclick', () => { cell.editing = true; renderNotebook(); });
+    body.appendChild(rd);
+  }
+
+  div.appendChild(body);
+
+  // drag events
+  div.addEventListener('dragstart', e => { div.classList.add('dragging'); e.dataTransfer.setData('text/plain', idx); });
+  div.addEventListener('dragend', () => div.classList.remove('dragging'));
+  div.addEventListener('dragover', e => { e.preventDefault(); div.classList.add('drag-over'); });
+  div.addEventListener('dragleave', () => div.classList.remove('drag-over'));
+  div.addEventListener('drop', e => {
+    e.preventDefault(); div.classList.remove('drag-over');
+    const from = parseInt(e.dataTransfer.getData('text/plain'));
+    if (from !== idx) { const [moved] = cells.splice(from,1); cells.splice(idx,0,moved); renderNotebook(); }
+  });
+
+  return div;
+}
+
+function drawMiniOrbit(canvas, cell) {
+  canvas.width = canvas.offsetWidth || 340;
+  canvas.height = canvas.offsetHeight || 220;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#080b12';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+  // draw current sim bodies as preview
+  if (bodies.length > 0) {
+    const cx = canvas.width/2, cy = canvas.height/2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    const maxR = Math.max(...bodies.map(b => Math.max(Math.abs(b.x), Math.abs(b.y)))) || 1;
+    const scale = Math.min(cx, cy) * 0.8 / maxR;
+    bodies.forEach(b => {
+      ctx.beginPath();
+      ctx.arc(b.x*scale, b.y*scale, Math.max(2, b.radius*scale*1e-9), 0, Math.PI*2);
+      ctx.fillStyle = b.color;
+      ctx.fill();
+    });
+    ctx.restore();
+  } else {
+    ctx.fillStyle = 'rgba(90,115,153,0.4)';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('No bodies — add some in the simulator', canvas.width/2, canvas.height/2);
+  }
+}
+
+function parseMarkdown(text) {
+  return text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/^### (.+)$/gm,'<h3>$1</h3>')
+    .replace(/^## (.+)$/gm,'<h2>$1</h2>')
+    .replace(/^# (.+)$/gm,'<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/`(.+?)`/g,'<code>$1</code>')
+    .replace(/^- (.+)$/gm,'<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/gs,'<ul>$1</ul>')
+    .replace(/\n\n/g,'</p><p>')
+    .replace(/^(?!<[hul])/gm, s => s ? '<p>'+s+'</p>' : '');
+}
+
+function escapeHtml(t) { return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Add cell buttons
+document.querySelectorAll('.add-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const type = btn.dataset.type;
+    const cell = createCell(type);
+    cells.push(cell);
+    renderNotebook();
+    setTimeout(() => {
+      const c = document.getElementById('cells-container');
+      c.scrollTop = c.scrollHeight;
+    }, 50);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHYSICS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function computeForces(bs) {
+  // Returns array of {fx, fy} per body, using softened gravity
+  const n = bs.length;
+  const forces = bs.map(() => ({fx:0, fy:0}));
+  for (let i = 0; i < n; i++) {
+    for (let j = i+1; j < n; j++) {
+      const dx = bs[j].x - bs[i].x;
+      const dy = bs[j].y - bs[i].y;
+      const r2 = dx*dx + dy*dy;
+      const softening = Math.max((bs[i].radius + bs[j].radius) * 0.5, 1e6);
+      const r2s = r2 + softening*softening;
+      const r = Math.sqrt(r2s);
+      const f = G * bs[i].mass * bs[j].mass / r2s;
+      const fx = f * dx / r;
+      const fy = f * dy / r;
+      forces[i].fx += fx; forces[i].fy += fy;
+      forces[j].fx -= fx; forces[j].fy -= fy;
+    }
+  }
+  return forces;
+}
+
+function kineticEnergy(bs) {
+  return bs.reduce((s,b) => s + 0.5*b.mass*(b.vx*b.vx+b.vy*b.vy), 0);
+}
+function potentialEnergy(bs) {
+  let pe = 0;
+  for (let i = 0; i < bs.length; i++)
+    for (let j = i+1; j < bs.length; j++) {
+      const dx=bs[j].x-bs[i].x, dy=bs[j].y-bs[i].y;
+      const r = Math.sqrt(dx*dx+dy*dy) || 1;
+      pe -= G*bs[i].mass*bs[j].mass/r;
+    }
+  return pe;
+}
+function totalEnergy(bs) { return kineticEnergy(bs) + potentialEnergy(bs); }
+
+// Leapfrog (Störmer-Verlet) integrator
+function leapfrogStep(bs, dt) {
+  if (bs.length === 0) return bs;
+  const n = bs.length;
+  // Store accelerations
+  const forces = computeForces(bs);
+  for (let i = 0; i < n; i++) {
+    bs[i].ax = forces[i].fx / bs[i].mass;
+    bs[i].ay = forces[i].fy / bs[i].mass;
+  }
+  // Drift: x += v*dt + 0.5*a*dt^2
+  for (let i = 0; i < n; i++) {
+    bs[i].x += bs[i].vx*dt + 0.5*bs[i].ax*dt*dt;
+    bs[i].y += bs[i].vy*dt + 0.5*bs[i].ay*dt*dt;
+  }
+  // Recompute forces at new positions
+  const forces2 = computeForces(bs);
+  // Kick: v += 0.5*(a_old + a_new)*dt
+  for (let i = 0; i < n; i++) {
+    const ax2 = forces2[i].fx / bs[i].mass;
+    const ay2 = forces2[i].fy / bs[i].mass;
+    bs[i].vx += 0.5*(bs[i].ax + ax2)*dt;
+    bs[i].vy += 0.5*(bs[i].ay + ay2)*dt;
+    bs[i].ax = ax2; bs[i].ay = ay2;
+  }
+  return bs;
+}
+
+function adaptiveStep(bs, basedt) {
+  if (bs.length < 2) return basedt;
+  // Shrink step when bodies are close
+  let minR = Infinity;
+  for (let i = 0; i < bs.length; i++)
+    for (let j = i+1; j < bs.length; j++) {
+      const dx=bs[j].x-bs[i].x, dy=bs[j].y-bs[i].y;
+      minR = Math.min(minR, Math.sqrt(dx*dx+dy*dy));
+    }
+  const factor = Math.min(1, Math.max(0.001, (minR / AU)));
+  return basedt * factor;
+}
+
+function checkCollisions(bs) {
+  for (let i = 0; i < bs.length; i++) {
+    for (let j = i+1; j < bs.length; j++) {
+      if (!bs[i] || !bs[j]) continue;
+      const dx=bs[j].x-bs[i].x, dy=bs[j].y-bs[i].y;
+      const r = Math.sqrt(dx*dx+dy*dy);
+      if (r < (bs[i].radius + bs[j].radius) * 1.2) {
+        // Merge: conserve momentum and mass
+        const m1=bs[i].mass, m2=bs[j].mass, mt=m1+m2;
+        const nx = (m1*bs[i].x + m2*bs[j].x)/mt;
+        const ny = (m1*bs[i].y + m2*bs[j].y)/mt;
+        const nvx = (m1*bs[i].vx + m2*bs[j].vx)/mt;
+        const nvy = (m1*bs[i].vy + m2*bs[j].vy)/mt;
+        const nr = bs[i].radius > bs[j].radius ? bs[i].radius * 1.1 : bs[j].radius * 1.1;
+        const merged = {
+          id: bs[i].id,
+          name: bs[i].mass >= bs[j].mass ? bs[i].name : bs[j].name,
+          mass: mt,
+          x: nx, y: ny, vx: nvx, vy: nvy,
+          ax: 0, ay: 0,
+          radius: nr,
+          color: bs[i].mass >= bs[j].mass ? bs[i].color : bs[j].color,
+        };
+        bs.splice(j, 1); bs.splice(i, 1);
+        bs.push(merged);
+        toast(`💥 ${merged.name}: collision merged`);
+        // merge trails
+        trails = trails.filter(t => t.id !== bs[i]?.id && t.id !== bs[j]?.id);
+        return bs;
+      }
+    }
+  }
+  return bs;
+}
+
+// Orbital period estimate (relative to heaviest body)
+function estimatePeriod(b, bs) {
+  const heavy = bs.reduce((a,c) => c.mass > a.mass ? c : a, bs[0]);
+  if (b === heavy) return null;
+  const dx=b.x-heavy.x, dy=b.y-heavy.y;
+  const r=Math.sqrt(dx*dx+dy*dy);
+  if (r < 1e6) return null;
+  return 2*Math.PI*Math.sqrt(r*r*r/(G*(b.mass+heavy.mass)));
+}
+
+// Resonance detection
+function detectResonances(bs) {
+  if (bs.length < 3) { resonanceData = []; return; }
+  const heavy = bs.reduce((a,c) => c.mass > a.mass ? c : a, bs[0]);
+  const periods = bs.filter(b=>b!==heavy).map(b => ({b, T:estimatePeriod(b,bs)})).filter(x=>x.T>0);
+  const pairs = [];
+  for (let i=0;i<periods.length;i++) for (let j=i+1;j<periods.length;j++) {
+    const r = periods[i].T / periods[j].T;
+    // Check simple ratios
+    for (let p=1;p<=4;p++) for (let q=1;q<=4;q++) {
+      if (Math.abs(r - p/q) < 0.04) {
+        pairs.push(`${periods[i].b.name}:${periods[j].b.name} = ${p}:${q}`);
+      }
+    }
+  }
+  resonanceData = [...new Set(pairs)].slice(0,4);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RENDERING
+// ═══════════════════════════════════════════════════════════════════════════
+const simCanvas = document.getElementById('sim-canvas');
+const ctx2 = simCanvas.getContext('2d');
+const starsCanvas = document.getElementById('stars-canvas');
+const sctx = starsCanvas.getContext('2d');
+let stars = [];
+
+function resizeCanvases() {
+  const wrapper = document.getElementById('canvas-wrapper');
+  simCanvas.width = wrapper.offsetWidth;
+  simCanvas.height = wrapper.offsetHeight;
+  starsCanvas.width = wrapper.offsetWidth;
+  starsCanvas.height = wrapper.offsetHeight;
+  generateStars();
+  drawStars();
+}
+
+function generateStars() {
+  stars = [];
+  const n = Math.floor((starsCanvas.width * starsCanvas.height) / 2500);
+  for (let i=0;i<n;i++) {
+    stars.push({
+      x: Math.random()*starsCanvas.width,
+      y: Math.random()*starsCanvas.height,
+      r: Math.random()*1.4+0.2,
+      a: Math.random()*0.6+0.1,
+    });
+  }
+}
+
+function drawStars() {
+  sctx.clearRect(0,0,starsCanvas.width,starsCanvas.height);
+  stars.forEach(s => {
+    sctx.beginPath();
+    sctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+    sctx.fillStyle = `rgba(200,220,255,${s.a})`;
+    sctx.fill();
+  });
+}
+
+function worldToScreen(wx, wy) {
+  const cx = simCanvas.width/2, cy = simCanvas.height/2;
+  return {
+    x: cx + (wx - camX)*camZoom,
+    y: cy - (wy - camY)*camZoom,
+  };
+}
+function screenToWorld(sx, sy) {
+  const cx = simCanvas.width/2, cy = simCanvas.height/2;
+  return {
+    x: (sx - cx)/camZoom + camX,
+    y: -((sy - cy)/camZoom - camY),
+  };
+}
+
+function bodyScreenRadius(b) {
+  const logR = Math.log10(b.mass / 1e20) * 2 + 3;
+  return Math.max(3, Math.min(28, logR)) * Math.max(0.3, camZoom * 0.6);
+}
+
+function drawFrame() {
+  const W = simCanvas.width, H = simCanvas.height;
+  ctx2.clearRect(0,0,W,H);
+
+  // Follow body
+  if (followBody) {
+    const fb = bodies.find(b=>b.id===followBody);
+    if (fb) { camX = fb.x; camY = fb.y; }
+  }
+
+  // Trails
+  if (showTrails) {
+    trails.forEach(trail => {
+      if (trail.pts.length < 2) return;
+      ctx2.beginPath();
+      const col = trail.color;
+      const n = trail.pts.length;
+      for (let i=0;i<n;i++) {
+        const {x,y} = worldToScreen(trail.pts[i].x, trail.pts[i].y);
+        if (i===0) ctx2.moveTo(x,y); else ctx2.lineTo(x,y);
+      }
+      // gradient fade: recent part brighter
+      const last = worldToScreen(trail.pts[n-1].x, trail.pts[n-1].y);
+      const first = worldToScreen(trail.pts[0].x, trail.pts[0].y);
+      const grad = ctx2.createLinearGradient(first.x,first.y,last.x,last.y);
+      grad.addColorStop(0,'transparent');
+      grad.addColorStop(1, col+'aa');
+      ctx2.strokeStyle = grad;
+      ctx2.lineWidth = 1;
+      ctx2.stroke();
+    });
+  }
+
+  // Center of mass
+  if (showCoM && bodies.length > 0) {
+    const tm = bodies.reduce((s,b)=>s+b.mass,0);
+    const cx2 = bodies.reduce((s,b)=>s+b.x*b.mass,0)/tm;
+    const cy2 = bodies.reduce((s,b)=>s+b.y*b.mass,0)/tm;
+    const sp = worldToScreen(cx2, cy2);
+    ctx2.strokeStyle = 'rgba(107,184,255,0.4)';
+    ctx2.lineWidth = 1;
+    ctx2.beginPath(); ctx2.moveTo(sp.x-8,sp.y); ctx2.lineTo(sp.x+8,sp.y); ctx2.stroke();
+    ctx2.beginPath(); ctx2.moveTo(sp.x,sp.y-8); ctx2.lineTo(sp.x,sp.y+8); ctx2.stroke();
+  }
+
+  // Bodies
+  bodies.forEach(b => {
+    const sp = worldToScreen(b.x, b.y);
+    const sr = bodyScreenRadius(b);
+
+    // Glow
+    const grd = ctx2.createRadialGradient(sp.x, sp.y, 0, sp.x, sp.y, sr*2.5);
+    grd.addColorStop(0, b.color+'55');
+    grd.addColorStop(1, 'transparent');
+    ctx2.beginPath();
+    ctx2.arc(sp.x, sp.y, sr*2.5, 0, Math.PI*2);
+    ctx2.fillStyle = grd;
+    ctx2.fill();
+
+    // Body disc
+    const bg = ctx2.createRadialGradient(sp.x-sr*0.25, sp.y-sr*0.25, sr*0.05, sp.x, sp.y, sr);
+    bg.addColorStop(0, lighten(b.color, 60));
+    bg.addColorStop(0.5, b.color);
+    bg.addColorStop(1, darken(b.color, 40));
+    ctx2.beginPath();
+    ctx2.arc(sp.x, sp.y, sr, 0, Math.PI*2);
+    ctx2.fillStyle = bg;
+    ctx2.fill();
+
+    // Highlight ring for hovered
+    if (hoveredBody === b.id) {
+      ctx2.beginPath();
+      ctx2.arc(sp.x, sp.y, sr+3, 0, Math.PI*2);
+      ctx2.strokeStyle = '#fff';
+      ctx2.lineWidth = 1.5;
+      ctx2.stroke();
+    }
+    // Follow ring
+    if (followBody === b.id) {
+      ctx2.beginPath();
+      ctx2.arc(sp.x, sp.y, sr+5, 0, Math.PI*2);
+      ctx2.strokeStyle = b.color;
+      ctx2.lineWidth = 1;
+      ctx2.setLineDash([3,3]);
+      ctx2.stroke();
+      ctx2.setLineDash([]);
+    }
+
+    // Name label
+    if (camZoom > 0.3) {
+      ctx2.fillStyle = 'rgba(200,216,238,0.8)';
+      ctx2.font = `${Math.max(9, 10*camZoom)}px monospace`;
+      ctx2.fillText(b.name, sp.x + sr + 4, sp.y + 3);
+    }
+  });
+
+  // Pending placement preview
+  if (placePending) {
+    const sp = worldToScreen(placePending.x, placePending.y);
+    ctx2.beginPath();
+    ctx2.arc(sp.x, sp.y, 6, 0, Math.PI*2);
+    ctx2.strokeStyle = '#fff';
+    ctx2.lineWidth = 1.5;
+    ctx2.setLineDash([2,2]);
+    ctx2.stroke();
+    ctx2.setLineDash([]);
+    // velocity arrow
+    const vx = Math.cos(velAngle) * velMag * 2e-4 * camZoom;
+    const vy = -Math.sin(velAngle) * velMag * 2e-4 * camZoom;
+    if (velMag > 0) {
+      ctx2.beginPath();
+      ctx2.moveTo(sp.x, sp.y);
+      ctx2.lineTo(sp.x + vx*80, sp.y + vy*80);
+      ctx2.strokeStyle = 'rgba(255,255,255,0.6)';
+      ctx2.lineWidth = 1.5;
+      ctx2.stroke();
+    }
+  }
+}
+
+function lighten(hex, amt) {
+  const n=parseInt(hex.slice(1),16);
+  const r=Math.min(255,((n>>16)&0xff)+amt);
+  const g=Math.min(255,((n>>8)&0xff)+amt);
+  const b=Math.min(255,(n&0xff)+amt);
+  return `rgb(${r},${g},${b})`;
+}
+function darken(hex, amt) {
+  const n=parseInt(hex.slice(1),16);
+  const r=Math.max(0,((n>>16)&0xff)-amt);
+  const g=Math.max(0,((n>>8)&0xff)-amt);
+  const b=Math.max(0,(n&0xff)-amt);
+  return `rgb(${r},${g},${b})`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SIMULATION LOOP
+// ═══════════════════════════════════════════════════════════════════════════
+let lastTimestamp = null;
+const BASE_DT = 3600; // 1 hour base step
+
+function simLoop(ts) {
+  if (isPlaying && bodies.length > 0) {
+    const wallDt = lastTimestamp ? Math.min((ts-lastTimestamp)/1000, 0.05) : 0.016;
+    lastTimestamp = ts;
+    const simDt = BASE_DT * timeWarp * (wallDt / 0.016);
+    const steps = Math.max(1, Math.min(8, Math.floor(Math.abs(timeWarp)/10)+1));
+    const subDt = simDt / steps;
+    for (let s=0; s<steps; s++) {
+      const adt = adaptiveStep(bodies, subDt);
+      bodies = leapfrogStep(bodies, adt);
+      bodies = checkCollisions(bodies);
+    }
+    simTime += simDt;
+    stepCount++;
+
+    // Update trails
+    if (showTrails) {
+      bodies.forEach(b => {
+        let trail = trails.find(t=>t.id===b.id);
+        if (!trail) { trail={id:b.id,color:b.color,pts:[]}; trails.push(trail); }
+        if (stepCount % 2 === 0) {
+          trail.pts.push({x:b.x, y:b.y});
+          if (trail.pts.length > MAX_TRAIL) trail.pts.shift();
+        }
+      });
+      // Clean orphan trails
+      trails = trails.filter(t => bodies.find(b=>b.id===t.id));
+    }
+
+    // Energy tracking
+    if (initialEnergy === null && bodies.length > 0) initialEnergy = totalEnergy(bodies);
+    const E = totalEnergy(bodies);
+
+    // Update status bar
+    if (stepCount % 10 === 0) {
+      document.getElementById('stat-time').textContent = formatTime(simTime);
+      const Estr = formatSI(Math.abs(E)) + 'J';
+      document.getElementById('stat-energy').textContent = Estr;
+      if (initialEnergy !== null && Math.abs(initialEnergy) > 0) {
+        const dE = Math.abs((E - initialEnergy)/initialEnergy)*100;
+        const dEl = document.getElementById('stat-denergy');
+        dEl.textContent = dE.toFixed(3)+'%';
+        dEl.className = 'stat-val' + (dE<0.1?' ok': dE<1?' warn':' danger');
+      }
+      document.getElementById('stat-bodies').textContent = bodies.length;
+      document.getElementById('stat-zoom').textContent = camZoom.toFixed(2)+'×';
+    }
+    // Resonances (less frequent)
+    if (stepCount % 120 === 0) {
+      detectResonances(bodies);
+      updateResonanceUI();
+    }
+  } else {
+    lastTimestamp = null;
+  }
+
+  drawFrame();
+  requestAnimationFrame(simLoop);
+}
+
+function updateResonanceUI() {
+  const el = document.getElementById('res-entries');
+  if (resonanceData.length === 0) { el.innerHTML = '—'; return; }
+  el.innerHTML = resonanceData.map(r=>`<div class="res-entry">${r}</div>`).join('');
+}
+
+function formatTime(s) {
+  if (s < 3600) return s.toFixed(0)+'s';
+  if (s < 86400) return (s/3600).toFixed(1)+'hr';
+  if (s < YEAR) return (s/86400).toFixed(1)+'d';
+  return (s/YEAR).toFixed(2)+'yr';
+}
+function formatSI(v) {
+  if (v >= 1e30) return (v/1e30).toFixed(2)+'×10³⁰ ';
+  if (v >= 1e27) return (v/1e27).toFixed(2)+'×10²⁷ ';
+  if (v >= 1e24) return (v/1e24).toFixed(2)+'×10²⁴ ';
+  if (v >= 1e21) return (v/1e21).toFixed(2)+'×10²¹ ';
+  if (v >= 1e18) return (v/1e18).toFixed(2)+'×10¹⁸ ';
+  return v.toExponential(2)+' ';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BODY PLACEMENT
+// ═══════════════════════════════════════════════════════════════════════════
+let bodyCounter = 0;
+const BODY_NAMES = ['Alpha','Beta','Gamma','Delta','Epsilon','Zeta','Eta','Theta','Iota','Kappa'];
+
+function addBody(x, y, mass, vx, vy, name, color) {
+  const r = massToRadius(mass);
+  const b = {
+    id: ++bodyCounter,
+    name: name || (BODY_NAMES[bodies.length % BODY_NAMES.length]),
+    mass, x, y, vx, vy, ax:0, ay:0, radius: r,
+    color: color || COLORS[colorIdx++ % COLORS.length],
+  };
+  bodies.push(b);
+  initialEnergy = null;
+  return b;
+}
+
+function massToRadius(mass) {
+  // Approximate radius for visualization (not to scale)
+  return Math.cbrt(mass / (1e10 * Math.PI * 4/3)) * 1e4;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VELOCITY WHEEL
+// ═══════════════════════════════════════════════════════════════════════════
+const velCanvas = document.getElementById('vel-canvas');
+const vctx = velCanvas.getContext('2d');
+
+function drawVelWheel() {
+  const W=80, H=80, cx=40, cy=40;
+  vctx.clearRect(0,0,W,H);
+  // Background circle
+  vctx.beginPath(); vctx.arc(cx,cy,36,0,Math.PI*2);
+  vctx.fillStyle='#080b12'; vctx.fill();
+  vctx.strokeStyle='#1f2d45'; vctx.lineWidth=1; vctx.stroke();
+  // Crosshairs
+  vctx.strokeStyle='#2a3a55'; vctx.lineWidth=0.5;
+  vctx.beginPath(); vctx.moveTo(cx-36,cy); vctx.lineTo(cx+36,cy); vctx.stroke();
+  vctx.beginPath(); vctx.moveTo(cx,cy-36); vctx.lineTo(cx,cy+36); vctx.stroke();
+  // Direction indicator
+  const mag = Math.min(1, velMag / 5e4) * 30;
+  const ex = cx + Math.cos(velAngle)*mag;
+  const ey = cy - Math.sin(velAngle)*mag;
+  if (velMag > 0) {
+    vctx.beginPath(); vctx.moveTo(cx,cy); vctx.lineTo(ex,ey);
+    vctx.strokeStyle='#4fa3e8'; vctx.lineWidth=2; vctx.stroke();
+    vctx.beginPath(); vctx.arc(ex,ey,3,0,Math.PI*2);
+    vctx.fillStyle='#4fa3e8'; vctx.fill();
+  }
+  // Center dot
+  vctx.beginPath(); vctx.arc(cx,cy,3,0,Math.PI*2);
+  vctx.fillStyle='#5a7399'; vctx.fill();
+}
+
+velCanvas.addEventListener('mousedown', e => { velDrag=true; updateVelFromMouse(e); });
+velCanvas.addEventListener('mousemove', e => { if(velDrag) updateVelFromMouse(e); });
+document.addEventListener('mouseup', () => velDrag=false);
+
+function updateVelFromMouse(e) {
+  const rect = velCanvas.getBoundingClientRect();
+  const dx = e.clientX - rect.left - 40;
+  const dy = e.clientY - rect.top - 40;
+  const dist = Math.sqrt(dx*dx+dy*dy);
+  velAngle = Math.atan2(-dy, dx);
+  velMag = (dist/30) * 5e4;
+  document.getElementById('pop-speed').value = velMag.toFixed(0);
+  drawVelWheel();
+}
+
+document.getElementById('pop-speed').addEventListener('input', () => {
+  velMag = parseFloat(document.getElementById('pop-speed').value)||0;
+  drawVelWheel();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CANVAS INTERACTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+simCanvas.addEventListener('click', e => {
+  if (mode !== 'place') return;
+  const rect = simCanvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+  const wp = screenToWorld(sx, sy);
+
+  // Check if clicking on existing body
+  for (const b of bodies) {
+    const sp = worldToScreen(b.x, b.y);
+    const sr = bodyScreenRadius(b);
+    const dx=sx-sp.x, dy=sy-sp.y;
+    if (dx*dx+dy*dy < sr*sr*4) {
+      // Toggle follow
+      followBody = followBody===b.id ? null : b.id;
+      if (followBody) toast(`Following ${b.name}`);
+      return;
+    }
+  }
+
+  // Place new body
+  placePending = wp;
+  const pop = document.getElementById('place-popover');
+  pop.classList.add('visible');
+  // Position popover near click but within bounds
+  let px = e.clientX - simCanvas.getBoundingClientRect().left + 10;
+  let py = e.clientY - simCanvas.getBoundingClientRect().top - 10;
+  if (px + 230 > simCanvas.width) px = sx - 230;
+  if (py + 280 > simCanvas.height) py = sy - 280;
+  pop.style.left = px+'px';
+  pop.style.top = py+'px';
+  document.getElementById('pop-name').value = BODY_NAMES[bodies.length % BODY_NAMES.length];
+  velAngle = -Math.PI/2; velMag = 0;
+  document.getElementById('pop-speed').value = '0';
+  drawVelWheel();
+});
+
+document.getElementById('pop-place-btn').addEventListener('click', () => {
+  if (!placePending) return;
+  const mass = parseFloat(document.getElementById('pop-mass').value) || 1e24;
+  const massReal = useAU ? mass * SOLAR_MASS : mass;
+  const speed = parseFloat(document.getElementById('pop-speed').value) || 0;
+  const vx = Math.cos(velAngle) * speed;
+  const vy = Math.sin(velAngle) * speed;
+  const name = document.getElementById('pop-name').value.trim() || `Body${bodies.length+1}`;
+  addBody(placePending.x, placePending.y, massReal, vx, vy, name);
+  document.getElementById('place-popover').classList.remove('visible');
+  placePending = null;
+  toast(`Placed ${name}`);
+});
+
+document.getElementById('pop-cancel-btn').addEventListener('click', () => {
+  document.getElementById('place-popover').classList.remove('visible');
+  placePending = null;
+});
+
+// Tooltip on hover
+simCanvas.addEventListener('mousemove', e => {
+  if (panning) {
+    const rect = simCanvas.getBoundingClientRect();
+    const dx = e.clientX - panStartX;
+    const dy = e.clientY - panStartY;
+    camX -= dx / camZoom;
+    camY += dy / camZoom;
+    panStartX = e.clientX; panStartY = e.clientY;
+    return;
+  }
+  const rect = simCanvas.getBoundingClientRect();
+  const sx = e.clientX - rect.left;
+  const sy = e.clientY - rect.top;
+  hoveredBody = null;
+  let found = false;
+  for (const b of bodies) {
+    const sp = worldToScreen(b.x, b.y);
+    const sr = bodyScreenRadius(b);
+    const dx=sx-sp.x, dy=sy-sp.y;
+    if (dx*dx+dy*dy < (sr+6)*(sr+6)) {
+      hoveredBody = b.id;
+      const tt = document.getElementById('body-tooltip');
+      tt.classList.add('visible');
+      tt.style.left = (sx+12)+'px'; tt.style.top = (sy-10)+'px';
+      document.getElementById('tt-name').textContent = b.name;
+      document.getElementById('tt-mass').textContent = `m: ${formatSI(b.mass)}kg`;
+      const spd = Math.sqrt(b.vx*b.vx+b.vy*b.vy);
+      document.getElementById('tt-vel').textContent = `|v|: ${formatSI(spd)}m/s`;
+      const T = estimatePeriod(b, bodies);
+      document.getElementById('tt-period').textContent = T ? `T: ${formatTime(T)}` : '';
+      found = true; break;
+    }
+  }
+  if (!found) document.getElementById('body-tooltip').classList.remove('visible');
+});
+
+// Pan with middle mouse or when in pan mode
+simCanvas.addEventListener('mousedown', e => {
+  if (mode==='pan' || e.button===1) {
+    panning=true; panStartX=e.clientX; panStartY=e.clientY;
+    simCanvas.classList.add('panning');
+    e.preventDefault();
+  }
+});
+document.addEventListener('mouseup', () => { panning=false; simCanvas.classList.remove('panning'); });
+
+// Zoom
+simCanvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY > 0 ? 0.9 : 1.1;
+  camZoom = Math.min(20, Math.max(1e-5, camZoom*factor));
+}, {passive:false});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TOOLBAR CONTROLS
+// ═══════════════════════════════════════════════════════════════════════════
+document.getElementById('btn-play').addEventListener('click', togglePlay);
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key===' ') { e.preventDefault(); togglePlay(); }
+  if (e.key==='t'||e.key==='T') toggleTrails();
+  if (e.key==='f'||e.key==='F') fitAll();
+  if (e.key==='p'||e.key==='P') setMode('place');
+  if (e.key==='v'||e.key==='V') setMode('pan');
+  if (e.key==='Escape') {
+    document.getElementById('place-popover').classList.remove('visible');
+    placePending=null;
+  }
+});
+
+function togglePlay() {
+  isPlaying = !isPlaying;
+  const btn = document.getElementById('btn-play');
+  btn.textContent = isPlaying ? '⏸' : '▶';
+  btn.className = 'sim-btn' + (isPlaying ? ' play-active' : '');
+}
+
+document.getElementById('btn-step').addEventListener('click', () => {
+  if (bodies.length===0) return;
+  bodies = leapfrogStep(bodies, BASE_DT);
+  simTime += BASE_DT;
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  isPlaying=false;
+  document.getElementById('btn-play').textContent='▶';
+  document.getElementById('btn-play').className='sim-btn';
+  bodies=[]; trails=[]; resonanceData=[];
+  simTime=0; stepCount=0; initialEnergy=null; followBody=null;
+  colorIdx=0; bodyCounter=0;
+  document.getElementById('stat-time').textContent='0.00yr';
+  document.getElementById('stat-energy').textContent='—';
+  document.getElementById('stat-denergy').textContent='—';
+  document.getElementById('stat-bodies').textContent='0';
+  updateResonanceUI();
+  toast('Simulation reset');
+});
+
+document.getElementById('btn-trails').addEventListener('click', toggleTrails);
+function toggleTrails() {
+  showTrails = !showTrails;
+  document.getElementById('btn-trails').classList.toggle('active', showTrails);
+  if (!showTrails) trails=[];
+}
+document.getElementById('btn-trails').classList.add('active');
+
+document.getElementById('btn-com').addEventListener('click', () => {
+  showCoM=!showCoM;
+  document.getElementById('btn-com').classList.toggle('active', showCoM);
+});
+
+document.getElementById('btn-fit').addEventListener('click', fitAll);
+function fitAll() {
+  if (bodies.length===0) { camX=0; camY=0; camZoom=1; return; }
+  followBody=null;
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  bodies.forEach(b=>{ minX=Math.min(minX,b.x); maxX=Math.max(maxX,b.x); minY=Math.min(minY,b.y); maxY=Math.max(maxY,b.y); });
+  camX=(minX+maxX)/2; camY=(minY+maxY)/2;
+  const rangeX=(maxX-minX)||1, rangeY=(maxY-minY)||1;
+  camZoom = Math.min(simCanvas.width/rangeX, simCanvas.height/rangeY)*0.45;
+  camZoom = Math.min(20,Math.max(1e-12, camZoom));
+}
+
+document.getElementById('btn-place-mode').addEventListener('click', () => setMode('place'));
+document.getElementById('btn-pan-mode').addEventListener('click', () => setMode('pan'));
+function setMode(m) {
+  mode=m;
+  simCanvas.style.cursor = m==='pan' ? 'grab' : 'crosshair';
+  document.getElementById('btn-place-mode').classList.toggle('active', m==='place');
+  document.getElementById('btn-pan-mode').classList.toggle('active', m==='pan');
+  document.getElementById('mode-indicator').textContent = m==='place' ? 'PLACE MODE' : 'PAN MODE';
+}
+setMode('place');
+
+// Timewarp
+const twSlider = document.getElementById('timewarp-slider');
+twSlider.addEventListener('input', () => {
+  const v = parseFloat(twSlider.value);
+  timeWarp = Math.pow(10, v);
+  document.getElementById('timewarp-display').textContent = timeWarp < 10 ? timeWarp.toFixed(1)+'×' : formatSI(timeWarp).trim()+'×';
+});
+
+// Unit toggle
+document.getElementById('btn-unit-toggle').addEventListener('click', () => {
+  useAU = !useAU;
+  document.getElementById('btn-unit-toggle').textContent = useAU ? 'M☉' : 'kg';
+  document.getElementById('pop-mass-unit').textContent = useAU ? 'M☉' : 'kg';
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PRESETS
+// ═══════════════════════════════════════════════════════════════════════════
+const PRESETS = {
+  solar: () => {
+    resetSim();
+    // Sun
+    addBody(0,0, 1.989e30, 0,0, 'Sun', '#ffcc44');
+    // Planets: [name, mass(kg), a(AU), v(m/s), color]
+    const planets = [
+      ['Mercury', 3.30e23, 0.387*AU, 47360, '#b0a090'],
+      ['Venus',   4.87e24, 0.723*AU, 35020, '#e8d080'],
+      ['Earth',   5.97e24, 1.000*AU, 29780, '#4488ff'],
+      ['Mars',    6.42e23, 1.524*AU, 24130, '#cc5533'],
+      ['Jupiter', 1.90e27, 5.203*AU, 13070, '#c89060'],
+      ['Saturn',  5.68e26, 9.537*AU,  9690, '#d4b870'],
+      ['Uranus',  8.68e25,19.191*AU,  6810, '#80d4e8'],
+      ['Neptune', 1.02e26,30.069*AU,  5430, '#4060e0'],
+    ];
+    planets.forEach(([n,m,a,v,c]) => addBody(a,0,m,0,v,n,c));
+    fitAll(); toast('Solar System loaded');
+  },
+  earthmoon: () => {
+    resetSim();
+    const MOON_A = 3.844e8;
+    addBody(0,0, 5.972e24, 0,0, 'Earth', '#4488ff');
+    addBody(MOON_A,0, 7.34e22, 0, 1022, 'Moon', '#aaaaaa');
+    camZoom = simCanvas.width/(MOON_A*3); camX=0; camY=0;
+    toast('Earth–Moon loaded');
+  },
+  binary: () => {
+    resetSim();
+    const M = 1.0e30, sep = 1.5*AU;
+    const v = Math.sqrt(G*M/(2*sep));
+    addBody(-sep/2,0, M, 0,-v, 'Star A', '#ffaa44');
+    addBody( sep/2,0, M, 0, v, 'Star B', '#44aaff');
+    fitAll(); toast('Binary stars loaded');
+  },
+  figure8: () => {
+    resetSim();
+    // Chenciner & Montgomery figure-8 solution (normalized)
+    const m = 1e30;
+    const scale = 3e11;
+    const vscale = 1e4;
+    // Positions (normalized units)
+    const pos = [[-0.97000436,0.24308753],[0,0],[0.97000436,-0.24308753]];
+    const vel = [[0.93240737/2,0.86473146/2],[-0.93240737,-0.86473146],[0.93240737/2,0.86473146/2]];
+    const colors = ['#ff6644','#44ff88','#4488ff'];
+    const names = ['Α','Β','Γ'];
+    pos.forEach((p,i) => addBody(p[0]*scale, p[1]*scale, m, vel[i][0]*vscale, vel[i][1]*vscale, names[i], colors[i]));
+    fitAll(); toast('Figure-8 three-body loaded');
+  },
+  blank: () => { resetSim(); toast('Canvas cleared'); },
+};
+
+function resetSim() {
+  isPlaying=false;
+  document.getElementById('btn-play').textContent='▶';
+  document.getElementById('btn-play').className='sim-btn';
+  bodies=[]; trails=[]; resonanceData=[];
+  simTime=0; stepCount=0; initialEnergy=null; followBody=null;
+  colorIdx=0; bodyCounter=0;
+  updateResonanceUI();
+}
+
+document.getElementById('preset-select').addEventListener('change', e => {
+  const v = e.target.value;
+  if (v && PRESETS[v]) { PRESETS[v](); e.target.value=''; }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXPORT / IMPORT
+// ═══════════════════════════════════════════════════════════════════════════
+document.getElementById('btn-export').addEventListener('click', () => {
+  const state = {
+    cells: cells.map(c => ({...c})),
+    bodies: bodies.map(b => ({...b})),
+    simTime, camX, camY, camZoom,
+    version: 1,
+  };
+  const blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download='orbital-notebook.json'; a.click();
+  URL.revokeObjectURL(url);
+  toast('Session exported');
+});
+
+document.getElementById('btn-import').addEventListener('click', () => {
+  const inp = document.createElement('input');
+  inp.type='file'; inp.accept='.json';
+  inp.addEventListener('change', () => {
+    const f = inp.files[0]; if(!f) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const state = JSON.parse(ev.target.result);
+        if (state.cells) { cells = state.cells; cellCounter = Math.max(...cells.map(c=>c.id),0); renderNotebook(); }
+        if (state.bodies) { bodies = state.bodies; bodyCounter = Math.max(...bodies.map(b=>b.id),0); }
+        if (state.simTime) simTime = state.simTime;
+        if (state.camX !== undefined) { camX=state.camX; camY=state.camY; camZoom=state.camZoom; }
+        initialEnergy = null;
+        toast('Session imported');
+      } catch { toast('Import failed: invalid file'); }
+    };
+    reader.readAsText(f);
+  });
+  inp.click();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NOTEBOOK PANEL TOGGLE + RESIZE
+// ═══════════════════════════════════════════════════════════════════════════
+document.getElementById('btn-toggle-notebook').addEventListener('click', () => {
+  const panel = document.getElementById('notebook-panel');
+  panel.classList.toggle('collapsed');
+  resizeCanvases();
+});
+document.getElementById('btn-nb-collapse').addEventListener('click', () => {
+  document.getElementById('notebook-panel').classList.add('collapsed');
+  resizeCanvases();
+});
+
+const rh = document.getElementById('resize-handle');
+let resizing=false, rsStartX=0, rsPanelW=0;
+rh.addEventListener('mousedown', e => {
+  resizing=true; rsStartX=e.clientX;
+  rsPanelW=document.getElementById('notebook-panel').offsetWidth;
+  document.body.style.cursor='col-resize';
+  document.body.style.userSelect='none';
+});
+document.addEventListener('mousemove', e => {
+  if(!resizing) return;
+  const dx=e.clientX-rsStartX;
+  const nw=Math.min(600,Math.max(200,rsPanelW+dx));
+  document.getElementById('notebook-panel').style.width=nw+'px';
+});
+document.addEventListener('mouseup', () => {
+  if(resizing) { resizing=false; document.body.style.cursor=''; document.body.style.userSelect=''; resizeCanvases(); }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════════════════════════════════
+function toast(msg) {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className='toast'; t.textContent=msg;
+  c.appendChild(t);
+  setTimeout(()=>t.remove(), 2500);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════════════
+window.addEventListener('resize', () => { resizeCanvases(); });
+resizeCanvases();
+drawVelWheel();
+
+// Default notebook content
+cells.push(createCell('md', `# Orbital Notebook\n\nA physics simulator for **N-body gravitational dynamics**.\n\n- Click on the canvas to place a body\n- Set mass, velocity direction and speed\n- Press **Play** or hit **Space** to run\n- Scroll to zoom · drag (pan mode) to move\n- Hover any body to see orbital data`));
+cells.push(createCell('text', 'Simulation notes:'));
+renderNotebook();
+
+// Load solar system by default
+PRESETS.solar();
+fitAll();
+
+// Start render loop
+requestAnimationFrame(simLoop);
+</script>
+</body>
+</html>
